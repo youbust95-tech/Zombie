@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Неизвестный вирус</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#10181c">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080b0d;color:#edf2f2;font-family:system-ui,sans-serif;touch-action:none}
+#game{height:100dvh;width:100%;display:flex;flex-direction:column;background:#0c1114;position:relative}
+#bar{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:5px 10px;background:#10181c;border-bottom:1px solid #35444a;gap:8px}
+#bar strong{font-size:12px;letter-spacing:1px}button{color:#f5f7f7;background:#26383f;border:1px solid #82969e;border-radius:12px;padding:9px 12px;font-size:14px;touch-action:none}
+#full{white-space:nowrap}#scene{position:relative;flex:1;min-height:0;overflow:hidden;background:#151b1d}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#goal,#hp{position:absolute;top:10px;background:#080d0ee0;border:1px solid #5c6c72;border-radius:7px;padding:8px;font-size:11px;pointer-events:none}
+#goal{left:10px;max-width:67%}#hp{right:10px;white-space:nowrap}
+#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#e5eeeebd;font-size:19px;pointer-events:none}
+#joy{position:absolute;left:4%;bottom:5%;width:min(29vw,145px);aspect-ratio:1;border:2px solid #b5c8d177;border-radius:50%;background:#1c303a91;display:flex;align-items:center;justify-content:center;touch-action:none}
+#knob{width:39%;aspect-ratio:1;background:#a6bbc8b5;border:2px solid #e4eef088;border-radius:50%;pointer-events:none}
+#actions{position:absolute;right:3%;bottom:5%;display:flex;align-items:center;gap:7px}
+#actions button{width:clamp(43px,11vw,61px);height:clamp(43px,11vw,61px);padding:0;border-radius:50%;font-size:20px;background:#253a43e8}
+#actions #hit{width:clamp(58px,15vw,78px);height:clamp(58px,15vw,78px);background:#742f32ed;border-color:#df8888;font-size:23px}
+#msg{position:absolute;left:50%;bottom:2%;transform:translateX(-50%);font-size:11px;background:#080d0df0;padding:7px 10px;border-radius:6px;pointer-events:none;max-width:42%;text-align:center}
+#overlay{position:absolute;inset:0;background:linear-gradient(120deg,#05090bea,#101718e8);display:flex;align-items:center;justify-content:center;text-align:center;padding:22px}
+#overlay>div{max-width:380px}#overlay h1{font-size:clamp(26px,7vw,42px);letter-spacing:2px;line-height:1.12}#overlay p{font-size:13px;line-height:1.7;color:#c4d0d0}#start{background:#793638;border-color:#d47d7d;font-weight:bold;padding:12px 22px}
+#hint{flex:none;padding:7px 10px;background:#10181c;color:#aebfc1;font-size:10px;line-height:1.5}
+#game:fullscreen{width:100vw;height:100dvh}#game:fullscreen #hint{display:none}
+@media(orientation:landscape){#bar{height:40px}#joy{width:min(23vh,145px)}#actions button{width:min(10vh,62px);height:min(10vh,62px)}#actions #hit{width:min(13vh,78px);height:min(13vh,78px)}}
+</style></head>
+<body><div id="game">
+<div id="bar"><strong>НЕИЗВЕСТНЫЙ ВИРУС</strong><button id="full">⛶ На весь экран</button></div>
+<div id="scene"><canvas id="c" width="800" height="500"></canvas><div id="goal">ЗАДАЧА<br><span id="quest">Проснись и проверь дверь.</span></div><div id="hp">♥ 100</div><div id="cross">+</div>
+<div id="joy"><div id="knob"></div></div><div id="actions"><button id="sprint" aria-label="Бег">🏃</button><button id="use" aria-label="Действие">✋</button><button id="hit" aria-label="Удар">✊</button></div><div id="msg">Ты просыпаешься от стука в дверь…</div>
+<div id="overlay"><div><div style="color:#e58d88;font-size:11px;letter-spacing:3px">МОБИЛЬНЫЙ SURVIVAL HORROR</div><h1>НЕИЗВЕСТНЫЙ<br>ВИРУС</h1><p>Улучшенная псевдо-3D графика: цветные стены с пятнами, двери, городской силуэт, тени и плавный обзор вверх/вниз. Поворачивай камеру сколько угодно — полный круг 360° и дальше.</p><button id="start">НАЧАТЬ ИГРУ</button></div></div></div>
+<div id="hint">Джойстик слева — движение · Свайп влево/вправо — обзор 360°, вверх/вниз — наклон камеры · 🏃 — бег · ✋ — действие · ✊ — удар</div>
+</div>
+<script>
+(()=>{
+const $=id=>document.getElementById(id),game=$('game'),c=$('c'),ctx=c.getContext('2d',{alpha:false});
+const W=800,H=500, FOV=Math.PI/2.75, COLS=400;
+let x=2.5,y=2.5,a=0,started=false,stage=0,enemy=null,knocked=false,hp=100,joy={x:0,y:0},run=false,last=0,drag=null,turn=null,elapsed=0;
+let doorOpen=false, look=0; const map=[
+'1111111111111111',
+'1000000000000001',
+'1000000000000001',
+'1000110001100001',
+'1000110001100001',
+'1000000000000001',
+'1000000000000001',
+'1000000000000001',
+'1000110001100001',
+'1000110001100001',
+'1000000000000001',
+'1000000000000001',
+'1000000000000001',
+'1000000000000001',
+'1000000000000001',
+'111111110D111111',
+'1111111100000001',
+'1100000000000001',
+'1100001100000001',
+'1100001100000001',
+'1100000000000001',
+'1100110000110001',
+'1100110000110001',
+'1100000000000001',
+'1111111111111111'];
+const goals=['Проснись и проверь дверь.','Открой дверь и поговори с соседом.','Помоги соседу медикаментами.','Выйди на улицу.','Вернись домой.','Защищайся от заражённого!','Собери припасы.','Найди укрытие.','Ты пережил первую ночь.'];
+function isWall(px,py){let ix=Math.floor(px),iy=Math.floor(py);return ix<0||iy<0||iy>=map.length||ix>=map[0].length||map[iy][ix]==='1'||(map[iy][ix]==='D'&&!doorOpen)}
+function toast(t){$('msg').textContent=t}
+function hud(){$('quest').textContent=goals[Math.min(stage,8)];$('hp').textContent='♥ '+Math.round(hp)}
+function interact(){if(!started)return;if(stage===0){stage=1;doorOpen=true;toast('Ты открыл входную дверь. Снаружи — улица города. Сосед просит бинты.')}else if(stage===1){stage=2;toast('Ты помог соседу. Прошло пять минут…')}else if(stage===2){stage=3;toast('Скорая: все больницы переполнены.')}else if(stage===3){stage=4;toast('Сирена! Объявлена зомби-эпидемия. Возвращайся!')}else if(stage===4){stage=5;enemy={x:Math.min(x+2,13),y:y};toast('Сосед резко обернулся и бросился на тебя!')}else if(stage===5&&knocked){stage=6;toast('Сосед без сознания. Собирай припасы.')}else if(stage===5){toast('Защищайся: нажми красную кнопку удара.')}else if(stage===6){stage=7;toast('Ты собрал медикаменты и еду. Ищи укрытие.')}else if(stage===7){stage=8;toast('Ты пережил первую ночь!');}hud()}
+function hit(){if(stage===5&&enemy){knocked=true;stage=6;toast('Удар! Сосед потерял сознание. Собирай припасы.')}else toast('Сейчас удар не нужен.');hud()}
+function ray(theta){let d=0,stepX=Math.cos(theta),stepY=Math.sin(theta);while(d<20){d+=.025;let xx=x+stepX*d,yy=y+stepY*d;if(isWall(xx,yy))return {d,xx,yy,tile:(Math.floor(yy)>=0&&Math.floor(yy)<map.length&&Math.floor(xx)>=0&&Math.floor(xx)<map[0].length)?map[Math.floor(yy)][Math.floor(xx)]:'1',side:Math.abs((xx-Math.floor(xx))-.5)>Math.abs((yy-Math.floor(yy))-.5)};}return {d:20,xx:x+stepX*20,yy:y+stepY*20,side:false}}
+function draw(){
+const horizon=H*.5+look; const sky=ctx.createLinearGradient(0,0,0,H*.52);sky.addColorStop(0,stage===3?'#687477':'#141b1f');sky.addColorStop(.6,stage===3?'#87908a':'#343a3a');sky.addColorStop(1,'#544f45');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H*.53);
+ // Далёкий силуэт города, дым и заражённое красное зарево
+ if(stage>=3 || doorOpen){
+   for(let b=0;b<18;b++){let bw=18+(b*17%39),bh=22+(b*31%82),bx=(b*53)%W;
+     ctx.fillStyle=['#263c36','#3c3a32','#4a3430','#343b46'][b%4];
+     ctx.fillRect(bx,H*.48-bh,bw,bh);
+     ctx.fillStyle='rgba(236,104,57,.5)';
+     for(let wy=H*.48-bh+7;wy<H*.48-5;wy+=12)for(let wx=bx+5;wx<bx+bw-3;wx+=10)if((wx+wy+b)%3!==0)ctx.fillRect(wx,wy,3,4);
+   }
+   ctx.fillStyle='rgba(151,37,25,.12)';ctx.fillRect(0,0,W,H*.5);
+ }
+const floor=ctx.createLinearGradient(0,H*.48,0,H);floor.addColorStop(0,'#4c4940');floor.addColorStop(.4,'#292b28');floor.addColorStop(1,'#111719');ctx.fillStyle=floor;ctx.fillRect(0,H*.48+look,W,H*.52-look);
+const depth=new Float32Array(COLS);
+for(let i=0;i<COLS;i++){
+ const theta=a+(i/COLS-.5)*FOV, hit=ray(theta),dist=Math.max(.05,hit.d*Math.cos(theta-a));depth[i]=dist;
+ const wallH=Math.min(H*2,H*0.92/dist),top=horizon-wallH*.5;
+ let texture=Math.floor((hit.side?hit.yy:hit.xx)*8)%8;
+ let mortar=(Math.floor((hit.side?hit.xx:hit.yy)*3)%3===0)?0.78:1;
+ let stripe=(Math.floor((hit.side?hit.xx:hit.yy)*2)%2===0)?1:.82;
+ let light=Math.max(18,155-dist*9)*(hit.side?.72:1)*mortar*stripe;
+ if(hit.tile==='D'&&!doorOpen){
+   ctx.fillStyle=`rgb(${Math.max(12,90-dist*5)*.72},${Math.max(10,47-dist*3)*.72},${Math.max(8,24-dist*2)*.72})`;
+   ctx.fillRect(i*W/COLS,top,W/COLS+1,wallH);
+   ctx.fillStyle='rgba(14,8,7,.65)';ctx.fillRect(i*W/COLS,top+wallH*.08,W/COLS+1,Math.max(1,wallH*.025));
+   if(texture===0){ctx.fillStyle='#c18a43';ctx.fillRect(i*W/COLS,top+wallH*.52,W/COLS+1,Math.max(2,wallH*.025))}
+ } else {
+   const palettes=[[115,72,48],[74,91,52],[111,49,43],[74,78,87],[126,91,54]];
+   const pal=palettes[(Math.floor(hit.xx*3+hit.yy*5)+Math.floor(hit.side?1:0)+palettes.length*10)%palettes.length];
+   ctx.fillStyle=`rgb(${Math.max(12,pal[0]*light/130)},${Math.max(10,pal[1]*light/130)},${Math.max(8,pal[2]*light/130)})`;ctx.fillRect(i*W/COLS,top,W/COLS+1,wallH);
+   if(texture===0){ctx.fillStyle=`rgba(8,12,13,${Math.min(.5,.22/dist)})`;ctx.fillRect(i*W/COLS,top,W/COLS+1,wallH)}
+   ctx.fillStyle='rgba(10,8,5,.32)';ctx.fillRect(i*W/COLS,top+wallH*.33,W/COLS+1,Math.max(1,wallH*.008));
+   if((i%29)<2){ctx.fillStyle='rgba(130,35,25,.55)';ctx.fillRect(i*W/COLS,top+wallH*.56,W/COLS+1,Math.max(2,wallH*.07))}
+ }
+}
+ // Floor perspective seams and scattered grime
+ctx.lineWidth=1;
+for(let j=1;j<13;j++){let t=j/13,yy=H*.5+t*t*H*.5;ctx.strokeStyle=`rgba(8,10,10,${.12+t*.25})`;ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(W,yy);ctx.stroke()}
+for(let j=-7;j<=7;j++){ctx.strokeStyle='rgba(10,12,12,.14)';ctx.beginPath();ctx.moveTo(W/2+j*7,horizon);ctx.lineTo(W/2+j*80,H);ctx.stroke()}
+function sprite(ox,oy,type){
+ let dx=ox-x,dy=oy-y,d=Math.hypot(dx,dy),r=Math.atan2(dy,dx)-a;while(r>Math.PI)r-=Math.PI*2;while(r< -Math.PI)r+=Math.PI*2;if(Math.abs(r)>FOV*.6||d<.25)return;
+ let sx=W/2+Math.tan(r)/Math.tan(FOV/2)*W/2,sz=Math.min(260,H*1.05/d),top=horizon-sz*.43;
+ if(sx< -sz||sx>W+sz)return;
+ // soft shadow
+ ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.ellipse(sx,H*.78,sz*.28,sz*.06,0,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#171a19';ctx.fillRect(sx-sz*.22,top+sz*.62,sz*.17,sz*.4);ctx.fillRect(sx+sz*.04,top+sz*.62,sz*.17,sz*.4);
+ ctx.fillStyle=type?'#293e32':'#343c3d';ctx.fillRect(sx-sz*.33,top+sz*.25,sz*.66,sz*.48);
+ ctx.fillStyle=type?'#41664a':'#746d60';ctx.fillRect(sx-sz*.22,top,sz*.44,sz*.32);
+ ctx.fillStyle=type?'#f1f0d9':'#242726';ctx.fillRect(sx-sz*.145,top+sz*.13,sz*.09,sz*.045);ctx.fillRect(sx+sz*.055,top+sz*.13,sz*.09,sz*.045);
+ if(type){ctx.fillStyle='#18251b';ctx.fillRect(sx+sz*.21,top+sz*.36,sz*.11,sz*.25);ctx.fillStyle='#9ca99a';ctx.fillRect(sx+sz*.24,top+sz*.4,sz*.045,sz*.08)}
+}
+if(stage>=1&&stage<=3)sprite(5.4,3.5,false);if(enemy&&!knocked)sprite(enemy.x,enemy.y,true);
+ // vignette
+const v=ctx.createRadialGradient(W/2,H/2,H*.15,W/2,H/2,H*.72);v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.55)');ctx.fillStyle=v;ctx.fillRect(0,0,W,H);
+}
+function frame(t){if(!started)return;let dt=Math.min((t-last)/1000,.04)||.016;last=t;let speed=(run?3.3:2.15)*dt,forward=-joy.y,side=joy.x,dx=(Math.cos(a)*forward-Math.sin(a)*side)*speed,dy=(Math.sin(a)*forward+Math.cos(a)*side)*speed;if(!isWall(x+dx,y))x+=dx;if(!isWall(x,y+dy))y+=dy;if(enemy&&!knocked){let d=Math.hypot(enemy.x-x,enemy.y-y);if(d>.8){enemy.x-=(enemy.x-x)/d*dt*.42;enemy.y-=(enemy.y-y)/d*dt*.42}else{hp-=dt*7;if(hp<=0){hp=100;x=2.5;y=2.5;a=0;stage=0;enemy=null;knocked=false;toast('Ты потерял сознание. Попробуй снова.');hud()}}}draw();requestAnimationFrame(frame)}
+$('start').onclick=()=>{started=true;$('overlay').style.display='none';last=performance.now();toast('Стук в дверь…');requestAnimationFrame(frame)};
+$('use').onclick=interact;$('hit').onclick=hit;
+const joyel=$('joy'),knob=$('knob');joyel.onpointerdown=e=>{e.preventDefault();drag=e.pointerId;joyel.setPointerCapture(drag);jm(e)};
+function jm(e){if(drag!==e.pointerId)return;let r=joyel.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,m=r.width*.32,l=Math.hypot(dx,dy);if(l>m){dx*=m/l;dy*=m/l}joy.x=dx/m;joy.y=dy/m;knob.style.transform=`translate(${dx}px,${dy}px)`}
+function je(e){if(drag!==e.pointerId)return;drag=null;joy.x=joy.y=0;knob.style.transform='translate(0,0)'}
+joyel.onpointermove=jm;joyel.onpointerup=je;joyel.onpointercancel=je;
+c.onpointerdown=e=>{if(!started)return;turn={id:e.pointerId,x:e.clientX,y:e.clientY};c.setPointerCapture(e.pointerId)};
+c.onpointermove=e=>{if(turn&&turn.id===e.pointerId){a+=(e.clientX-turn.x)*.0065;look=Math.max(-145,Math.min(145,look+(e.clientY-turn.y)*-.85));turn.x=e.clientX;turn.y=e.clientY;}};c.onpointerup=c.onpointercancel=e=>{if(turn&&turn.id===e.pointerId)turn=null};
+$('sprint').onpointerdown=e=>{e.preventDefault();run=true};['pointerup','pointercancel','lostpointercapture'].forEach(ev=>$('sprint').addEventListener(ev,()=>run=false));
+async function fullscreen(){try{if(document.fullscreenElement){await document.exitFullscreen();return}if(game.requestFullscreen){await game.requestFullscreen();try{if(screen.orientation&&screen.orientation.lock)await screen.orientation.lock('landscape')}catch(_){}}else toast('Браузер не поддерживает полный экран — открой страницу в отдельной вкладке.')}catch(e){toast('Полный экран заблокирован браузером. Открой страницу отдельно и нажми ещё раз.')}}
+$('full').onclick=fullscreen;document.addEventListener('fullscreenchange',()=>{$('full').textContent=document.fullscreenElement?'⛶ Свернуть':'⛶ На весь экран'});
+window.addEventListener('keydown',e=>{if(e.key==='w'||e.key==='ArrowUp')joy.y=-1;if(e.key==='s'||e.key==='ArrowDown')joy.y=1;if(e.key==='a'||e.key==='ArrowLeft')joy.x=-1;if(e.key==='d'||e.key==='ArrowRight')joy.x=1;if(e.key==='Shift')run=true;if(e.key==='e')interact();if(e.key==='f')hit()});
+window.addEventListener('keyup',e=>{if(['w','s','ArrowUp','ArrowDown'].includes(e.key))joy.y=0;if(['a','d','ArrowLeft','ArrowRight'].includes(e.key))joy.x=0;if(e.key==='Shift')run=false});
+hud();draw();
+})();
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}
+</script></body></html>
